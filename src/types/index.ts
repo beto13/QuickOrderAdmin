@@ -30,3 +30,10 @@ export interface CategoryDto {
   name: string
   displayOrder: number
 }
+
+export interface TableDto {
+  id: number
+  number: string
+  isActive: boolean
+  menuId: number
+}

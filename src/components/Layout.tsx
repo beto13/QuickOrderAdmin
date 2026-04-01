@@ -2,6 +2,13 @@ import { Outlet, NavLink } from 'react-router-dom'
 
 const navItems = [
   {
+    to: '/tables', label: 'Mesas', icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M3 14h18M10 10V6m4 4V6M10 14v4m4-4v4" />
+      </svg>
+    ),
+  },
+  {
     to: '/menus', label: 'Menús', icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h7" />
