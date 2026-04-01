@@ -12,29 +12,21 @@ export interface PaginatedResponse<T> {
   pageSize: number
 }
 
-export interface OrderItemDto {
-  menuProductId: number
-  productName: string
-  quantity: number
-  unitPrice: number
-  notes: string | null
-}
-
-export interface OrderDto {
+export interface MenuDto {
   id: number
-  tableId: number
-  tableNumber: string
-  menuId: number
-  menuName: string
-  status: string
-  notes: string | null
-  createdAt: string
-  items: OrderItemDto[]
-}
-
-export interface TableDto {
-  id: number
-  number: string
+  name: string
   isActive: boolean
-  menuId: number
+}
+
+export interface ProductDto {
+  id: number
+  name: string
+  description: string | null
+  imageUrl: string | null
+}
+
+export interface CategoryDto {
+  id: number
+  name: string
+  displayOrder: number
 }
