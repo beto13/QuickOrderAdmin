@@ -10,44 +10,40 @@ import {
   updateModifier,
   deleteModifier,
 } from '../api/modifierGroups'
-import type { ProductDto, ModifierGroupDto, ModifierDto } from '../types'
+import type { ModifierGroupDto, ModifierDto } from '../types'
 
 interface Props {
-  product: ProductDto
-  onClose: () => void
+  productId: number
 }
 
 const defaultGroupForm = { name: '', minSelections: 0, maxSelections: 1, isRequired: false }
 const defaultModifierForm = { name: '', description: '' }
 
-export default function ProductModifiersModal({ product, onClose }: Props) {
+export default function ModifierGroupsSection({ productId }: Props) {
   const qc = useQueryClient()
 
-  // Grupo seleccionado para editar / expandir
   const [expandedGroupId, setExpandedGroupId] = useState<number | null>(null)
   const [groupModal, setGroupModal] = useState<'create' | 'edit' | null>(null)
   const [selectedGroup, setSelectedGroup] = useState<ModifierGroupDto | null>(null)
   const [groupForm, setGroupForm] = useState(defaultGroupForm)
 
-  // Modificador seleccionado para editar
   const [modifierModal, setModifierModal] = useState<'create' | 'edit' | null>(null)
+  const [activeGroupForModifier, setActiveGroupForModifier] = useState<number | null>(null)
   const [selectedModifier, setSelectedModifier] = useState<ModifierDto | null>(null)
   const [modifierForm, setModifierForm] = useState(defaultModifierForm)
 
-  // Traer todos los grupos y filtrar por productId
   const { data: allGroups, isLoading } = useQuery({
     queryKey: ['modifierGroups'],
     queryFn: () => getModifierGroups(1),
   })
-  const groups = (allGroups?.items ?? []).filter(g => g.productId === product.id)
+  const groups = (allGroups?.items ?? []).filter(g => g.productId === productId)
 
   const invalidateGroups = () => qc.invalidateQueries({ queryKey: ['modifierGroups'] })
 
-  // --- Mutaciones de grupos ---
   const createGroupMut = useMutation({
     mutationFn: () => createModifierGroup(
       groupForm.name, groupForm.minSelections, groupForm.maxSelections,
-      groupForm.isRequired, product.id, null,
+      groupForm.isRequired, productId, null,
     ),
     onSuccess: () => { invalidateGroups(); setGroupModal(null) },
   })
@@ -65,11 +61,10 @@ export default function ProductModifiersModal({ product, onClose }: Props) {
     onSuccess: () => { invalidateGroups(); setExpandedGroupId(null) },
   })
 
-  // --- Mutaciones de modificadores ---
   const createModifierMut = useMutation({
-    mutationFn: () => createModifier(expandedGroupId!, modifierForm.name, modifierForm.description || null),
+    mutationFn: () => createModifier(activeGroupForModifier!, modifierForm.name, modifierForm.description || null),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['modifiers', expandedGroupId] })
+      qc.invalidateQueries({ queryKey: ['modifiers', activeGroupForModifier] })
       setModifierModal(null)
     },
   })
@@ -77,17 +72,17 @@ export default function ProductModifiersModal({ product, onClose }: Props) {
   const updateModifierMut = useMutation({
     mutationFn: () => updateModifier(selectedModifier!.id, modifierForm.name, modifierForm.description || null),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['modifiers', expandedGroupId] })
+      qc.invalidateQueries({ queryKey: ['modifiers', activeGroupForModifier] })
       setModifierModal(null)
     },
   })
 
   const deleteModifierMut = useMutation({
-    mutationFn: ({ id, groupId }: { id: number; groupId: number }) => deleteModifier(id).then(() => groupId),
+    mutationFn: ({ id, groupId }: { id: number; groupId: number }) =>
+      deleteModifier(id).then(() => groupId),
     onSuccess: (groupId) => qc.invalidateQueries({ queryKey: ['modifiers', groupId] }),
   })
 
-  // --- Helpers ---
   const openCreateGroup = () => {
     setGroupForm(defaultGroupForm)
     setSelectedGroup(null)
@@ -101,71 +96,60 @@ export default function ProductModifiersModal({ product, onClose }: Props) {
   }
 
   const openCreateModifier = (groupId: number) => {
-    setExpandedGroupId(groupId)
+    setActiveGroupForModifier(groupId)
     setModifierForm(defaultModifierForm)
     setSelectedModifier(null)
     setModifierModal('create')
   }
 
-  const openEditModifier = (m: ModifierDto) => {
+  const openEditModifier = (m: ModifierDto, groupId: number) => {
+    setActiveGroupForModifier(groupId)
     setSelectedModifier(m)
     setModifierForm({ name: m.name, description: m.description ?? '' })
     setModifierModal('edit')
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <div>
-            <h2 className="font-bold text-gray-900">Grupos de modificadores</h2>
-            <p className="text-xs text-gray-400 mt-0.5">{product.name}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={openCreateGroup}
-              className="bg-gray-900 text-white text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-gray-700 transition-colors"
-            >
-              + Nuevo grupo
-            </button>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
-          </div>
-        </div>
-
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
-          {isLoading ? (
-            <p className="text-center text-gray-400 text-sm py-8">Cargando...</p>
-          ) : groups.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-gray-400 text-sm">Este producto no tiene grupos de modificadores.</p>
-              <button onClick={openCreateGroup} className="mt-3 text-sm text-gray-900 font-semibold underline underline-offset-2">
-                Crear el primero
-              </button>
-            </div>
-          ) : (
-            groups.map(group => (
-              <GroupRow
-                key={group.id}
-                group={group}
-                isExpanded={expandedGroupId === group.id}
-                onToggle={() => setExpandedGroupId(expandedGroupId === group.id ? null : group.id)}
-                onEdit={() => openEditGroup(group)}
-                onDelete={() => deleteGroupMut.mutate(group.id)}
-                onAddModifier={() => openCreateModifier(group.id)}
-                onEditModifier={openEditModifier}
-                onDeleteModifier={(modId) => deleteModifierMut.mutate({ id: modId, groupId: group.id })}
-              />
-            ))
-          )}
-        </div>
+    <div>
+      {/* Header sección */}
+      <div className="flex items-center justify-between mb-3">
+        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+          Grupos de modificadores
+        </label>
+        <button
+          type="button"
+          onClick={openCreateGroup}
+          className="text-xs text-gray-700 font-semibold hover:text-gray-900 flex items-center gap-1 transition-colors"
+        >
+          <span className="text-sm leading-none">+</span> Agregar grupo
+        </button>
       </div>
 
-      {/* Modal grupo */}
+      {isLoading ? (
+        <p className="text-xs text-gray-400 py-2">Cargando...</p>
+      ) : groups.length === 0 ? (
+        <p className="text-xs text-gray-400 py-2">Sin grupos de modificadores.</p>
+      ) : (
+        <div className="space-y-2">
+          {groups.map(group => (
+            <GroupRow
+              key={group.id}
+              group={group}
+              isExpanded={expandedGroupId === group.id}
+              onToggle={() => setExpandedGroupId(expandedGroupId === group.id ? null : group.id)}
+              onEdit={() => openEditGroup(group)}
+              onDelete={() => deleteGroupMut.mutate(group.id)}
+              onAddModifier={() => openCreateModifier(group.id)}
+              onEditModifier={(m) => openEditModifier(m, group.id)}
+              onDeleteModifier={(id) => deleteModifierMut.mutate({ id, groupId: group.id })}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Sub-modal grupo */}
       {groupModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-60 p-4">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
             <h3 className="font-bold text-gray-900 mb-4">
               {groupModal === 'create' ? 'Nuevo grupo de modificadores' : 'Editar grupo'}
@@ -180,7 +164,6 @@ export default function ProductModifiersModal({ product, onClose }: Props) {
                   placeholder="Ej: Cocción, Extras, Salsas"
                 />
               </div>
-
               <div className="flex items-center gap-3">
                 <input
                   id="isRequired"
@@ -191,23 +174,20 @@ export default function ProductModifiersModal({ product, onClose }: Props) {
                 />
                 <label htmlFor="isRequired" className="text-sm text-gray-700">Selección requerida</label>
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Mín. selecciones</label>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Mín.</label>
                   <input
-                    type="number"
-                    min={0}
+                    type="number" min={0}
                     value={groupForm.minSelections}
                     onChange={e => setGroupForm(f => ({ ...f, minSelections: Number(e.target.value) }))}
                     className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Máx. selecciones</label>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Máx.</label>
                   <input
-                    type="number"
-                    min={1}
+                    type="number" min={1}
                     value={groupForm.maxSelections}
                     onChange={e => setGroupForm(f => ({ ...f, maxSelections: Number(e.target.value) }))}
                     className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gray-400"
@@ -215,7 +195,6 @@ export default function ProductModifiersModal({ product, onClose }: Props) {
                 </div>
               </div>
             </div>
-
             <div className="flex justify-end gap-2 mt-6">
               <button onClick={() => setGroupModal(null)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700">Cancelar</button>
               <button
@@ -230,9 +209,9 @@ export default function ProductModifiersModal({ product, onClose }: Props) {
         </div>
       )}
 
-      {/* Modal modificador */}
+      {/* Sub-modal modificador */}
       {modifierModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-60 p-4">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
             <h3 className="font-bold text-gray-900 mb-4">
               {modifierModal === 'create' ? 'Nueva opción' : 'Editar opción'}
@@ -248,7 +227,9 @@ export default function ProductModifiersModal({ product, onClose }: Props) {
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Descripción <span className="text-gray-300 font-normal">(opcional)</span></label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Descripción <span className="text-gray-300 font-normal normal-case">(opcional)</span>
+                </label>
                 <input
                   value={modifierForm.description}
                   onChange={e => setModifierForm(f => ({ ...f, description: e.target.value }))}
@@ -286,23 +267,22 @@ function GroupRow({
   onEditModifier: (m: ModifierDto) => void
   onDeleteModifier: (id: number) => void
 }) {
-  const { data: modifiersData } = useQuery({
+  const { data } = useQuery({
     queryKey: ['modifiers', group.id],
     queryFn: () => getModifiersByGroup(group.id),
     enabled: isExpanded,
   })
-  const modifiers = modifiersData?.items ?? []
+  const modifiers = data?.items ?? []
 
   return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden">
-      {/* Cabecera del grupo */}
-      <div className="flex items-center gap-3 px-4 py-3 bg-gray-50">
-        <button onClick={onToggle} className="text-gray-400 hover:text-gray-600 transition-colors">
-          <svg className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div className="border border-gray-200 rounded-lg overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2.5 bg-gray-50">
+        <button onClick={onToggle} className="text-gray-400 hover:text-gray-600 transition-colors shrink-0">
+          <svg className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
         </button>
-        <div className="flex-1 min-w-0" onClick={onToggle} role="button">
+        <div className="flex-1 min-w-0 cursor-pointer" onClick={onToggle}>
           <p className="font-semibold text-gray-900 text-sm">{group.name}</p>
           <div className="flex items-center gap-2 mt-0.5">
             {group.isRequired && (
@@ -315,21 +295,18 @@ function GroupRow({
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-1">
-          <button onClick={onEdit} className="text-xs text-gray-500 hover:text-gray-900 font-medium px-2 py-1 rounded hover:bg-gray-200 transition-colors">
-            Editar
-          </button>
-          <button onClick={onDelete} className="text-xs text-red-400 hover:text-red-600 font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors">
-            Eliminar
-          </button>
-        </div>
+        <button onClick={onEdit} className="text-xs text-gray-500 hover:text-gray-900 font-medium px-2 py-1 rounded hover:bg-gray-200 transition-colors">
+          Editar
+        </button>
+        <button onClick={onDelete} className="text-xs text-red-400 hover:text-red-600 font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors">
+          Eliminar
+        </button>
       </div>
 
-      {/* Opciones expandidas */}
       {isExpanded && (
-        <div className="px-4 py-3 space-y-1">
+        <div className="px-3 py-2 space-y-1">
           {modifiers.length === 0 ? (
-            <p className="text-xs text-gray-400 py-2">Sin opciones aún.</p>
+            <p className="text-xs text-gray-400 py-1">Sin opciones aún.</p>
           ) : (
             modifiers.map(m => (
               <div key={m.id} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
@@ -338,21 +315,14 @@ function GroupRow({
                   {m.description && <span className="text-xs text-gray-400 ml-2">{m.description}</span>}
                 </div>
                 <div className="flex gap-1">
-                  <button onClick={() => onEditModifier(m)} className="text-xs text-gray-400 hover:text-gray-700 px-2 py-0.5 rounded hover:bg-gray-100 transition-colors">
-                    Editar
-                  </button>
-                  <button onClick={() => onDeleteModifier(m.id)} className="text-xs text-red-400 hover:text-red-600 px-2 py-0.5 rounded hover:bg-red-50 transition-colors">
-                    Eliminar
-                  </button>
+                  <button onClick={() => onEditModifier(m)} className="text-xs text-gray-400 hover:text-gray-700 px-2 py-0.5 rounded hover:bg-gray-100 transition-colors">Editar</button>
+                  <button onClick={() => onDeleteModifier(m.id)} className="text-xs text-red-400 hover:text-red-600 px-2 py-0.5 rounded hover:bg-red-50 transition-colors">Eliminar</button>
                 </div>
               </div>
             ))
           )}
-          <button
-            onClick={onAddModifier}
-            className="mt-2 text-xs text-gray-500 hover:text-gray-900 font-medium flex items-center gap-1 transition-colors"
-          >
-            <span className="text-base leading-none">+</span> Agregar opción
+          <button onClick={onAddModifier} className="mt-1 text-xs text-gray-500 hover:text-gray-900 font-medium flex items-center gap-1 transition-colors">
+            <span className="text-sm leading-none">+</span> Agregar opción
           </button>
         </div>
       )}
