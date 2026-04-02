@@ -37,3 +37,20 @@ export interface TableDto {
   isActive: boolean
   menuId: number
 }
+
+export interface ModifierGroupDto {
+  id: number
+  name: string
+  minSelections: number
+  maxSelections: number
+  isRequired: boolean
+  productId: number | null
+  categoryId: number | null
+}
+
+export interface ModifierDto {
+  id: number
+  modifierGroupId: number
+  name: string
+  description: string | null
+}

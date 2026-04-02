@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getProducts, createProduct, updateProduct, deleteProduct, uploadProductImage } from '../api/products'
+import ProductModifiersModal from '../components/ProductModifiersModal'
 import type { ProductDto } from '../types'
 
 export default function ProductsPage() {
@@ -8,9 +9,11 @@ export default function ProductsPage() {
   const [page, setPage] = useState(1)
   const [modal, setModal] = useState<'create' | 'edit' | null>(null)
   const [selected, setSelected] = useState<ProductDto | null>(null)
+  const [modifiersProduct, setModifiersProduct] = useState<ProductDto | null>(null)
   const [form, setForm] = useState({ name: '', description: '' })
-  const fileRef = useRef<HTMLInputElement>(null)
-  const [uploadingId, setUploadingId] = useState<number | null>(null)
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const modalFileRef = useRef<HTMLInputElement>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['products', page],
@@ -20,12 +23,18 @@ export default function ProductsPage() {
   const invalidate = () => qc.invalidateQueries({ queryKey: ['products'] })
 
   const createMut = useMutation({
-    mutationFn: () => createProduct(form.name, form.description || null),
+    mutationFn: async () => {
+      const product = await createProduct(form.name, form.description || null)
+      if (imageFile) await uploadProductImage(product.id, imageFile)
+    },
     onSuccess: () => { invalidate(); closeModal() },
   })
 
   const updateMut = useMutation({
-    mutationFn: () => updateProduct(selected!.id, form.name, form.description || null),
+    mutationFn: async () => {
+      await updateProduct(selected!.id, form.name, form.description || null)
+      if (imageFile) await uploadProductImage(selected!.id, imageFile)
+    },
     onSuccess: () => { invalidate(); closeModal() },
   })
 
@@ -36,29 +45,32 @@ export default function ProductsPage() {
 
   const openCreate = () => {
     setForm({ name: '', description: '' })
+    setImageFile(null)
+    setImagePreview(null)
     setModal('create')
   }
 
   const openEdit = (p: ProductDto) => {
     setSelected(p)
     setForm({ name: p.name, description: p.description ?? '' })
+    setImageFile(null)
+    setImagePreview(p.imageUrl ?? null)
     setModal('edit')
   }
 
-  const closeModal = () => { setModal(null); setSelected(null) }
-
-  const handleImageClick = (id: number) => {
-    setUploadingId(id)
-    fileRef.current?.click()
+  const closeModal = () => {
+    setModal(null)
+    setSelected(null)
+    setImageFile(null)
+    setImagePreview(null)
   }
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file || !uploadingId) return
-    await uploadProductImage(uploadingId, file)
-    invalidate()
+    if (!file) return
+    setImageFile(file)
+    setImagePreview(URL.createObjectURL(file))
     e.target.value = ''
-    setUploadingId(null)
   }
 
   return (
@@ -95,22 +107,26 @@ export default function ProductsPage() {
               {data?.items.map(product => (
                 <tr key={product.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3">
-                    <button onClick={() => handleImageClick(product.id)} title="Cambiar imagen">
-                      {product.imageUrl ? (
-                        <img src={product.imageUrl} alt={product.name} className="w-10 h-10 rounded-lg object-cover hover:opacity-80 transition-opacity" />
-                      ) : (
-                        <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-gray-200 transition-colors">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                        </div>
-                      )}
-                    </button>
+                    {product.imageUrl ? (
+                      <img src={product.imageUrl} alt={product.name} className="w-10 h-10 rounded-lg object-cover" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center text-gray-300">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 font-medium text-gray-900">{product.name}</td>
                   <td className="px-4 py-3 text-gray-500">{product.description ?? <span className="text-gray-300">—</span>}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => setModifiersProduct(product)}
+                        className="text-xs text-blue-500 hover:text-blue-700 font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+                      >
+                        Modificadores
+                      </button>
                       <button
                         onClick={() => openEdit(product)}
                         className="text-xs text-gray-500 hover:text-gray-900 font-medium px-2 py-1 rounded hover:bg-gray-100 transition-colors"
@@ -144,8 +160,13 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {/* Input oculto para imagen */}
-      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+      {/* Modal modificadores */}
+      {modifiersProduct && (
+        <ProductModifiersModal
+          product={modifiersProduct}
+          onClose={() => setModifiersProduct(null)}
+        />
+      )}
 
       {/* Modal crear/editar */}
       {modal && (
@@ -154,6 +175,28 @@ export default function ProductsPage() {
             <h2 className="font-bold text-gray-900 mb-4">{modal === 'create' ? 'Nuevo producto' : 'Editar producto'}</h2>
 
             <div className="space-y-4">
+              {/* Imagen */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Imagen</label>
+                <button
+                  type="button"
+                  onClick={() => modalFileRef.current?.click()}
+                  className="mt-1 w-full h-36 rounded-xl border-2 border-dashed border-gray-200 hover:border-gray-400 transition-colors overflow-hidden flex items-center justify-center"
+                >
+                  {imagePreview ? (
+                    <img src={imagePreview} alt="preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="flex flex-col items-center gap-1 text-gray-400">
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+                      </svg>
+                      <span className="text-xs">Seleccionar imagen</span>
+                    </div>
+                  )}
+                </button>
+                <input ref={modalFileRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
+              </div>
+
               <div>
                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Nombre</label>
                 <input
@@ -163,6 +206,7 @@ export default function ProductsPage() {
                   placeholder="Ej: Lomito clásico"
                 />
               </div>
+
               <div>
                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Descripción</label>
                 <textarea
