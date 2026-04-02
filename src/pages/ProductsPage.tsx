@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getProducts, createProduct, updateProduct, deleteProduct, uploadProductImage } from '../api/products'
-import ProductModifiersModal from '../components/ProductModifiersModal'
+import ModifierGroupsSection from '../components/ModifierGroupsSection'
 import type { ProductDto } from '../types'
 
 export default function ProductsPage() {
@@ -9,7 +9,6 @@ export default function ProductsPage() {
   const [page, setPage] = useState(1)
   const [modal, setModal] = useState<'create' | 'edit' | null>(null)
   const [selected, setSelected] = useState<ProductDto | null>(null)
-  const [modifiersProduct, setModifiersProduct] = useState<ProductDto | null>(null)
   const [form, setForm] = useState({ name: '', description: '' })
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -26,8 +25,16 @@ export default function ProductsPage() {
     mutationFn: async () => {
       const product = await createProduct(form.name, form.description || null)
       if (imageFile) await uploadProductImage(product.id, imageFile)
+      return product
     },
-    onSuccess: () => { invalidate(); closeModal() },
+    onSuccess: (product) => {
+      invalidate()
+      // Transiciona a modo edición para que aparezca la sección de modificadores
+      setSelected(product)
+      setImagePreview(product.imageUrl ?? null)
+      setImageFile(null)
+      setModal('edit')
+    },
   })
 
   const updateMut = useMutation({
@@ -122,12 +129,6 @@ export default function ProductsPage() {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button
-                        onClick={() => setModifiersProduct(product)}
-                        className="text-xs text-blue-500 hover:text-blue-700 font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors"
-                      >
-                        Modificadores
-                      </button>
-                      <button
                         onClick={() => openEdit(product)}
                         className="text-xs text-gray-500 hover:text-gray-900 font-medium px-2 py-1 rounded hover:bg-gray-100 transition-colors"
                       >
@@ -160,18 +161,10 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {/* Modal modificadores */}
-      {modifiersProduct && (
-        <ProductModifiersModal
-          product={modifiersProduct}
-          onClose={() => setModifiersProduct(null)}
-        />
-      )}
-
       {/* Modal crear/editar */}
       {modal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
             <h2 className="font-bold text-gray-900 mb-4">{modal === 'create' ? 'Nuevo producto' : 'Editar producto'}</h2>
 
             <div className="space-y-4">
@@ -229,6 +222,15 @@ export default function ProductsPage() {
                 {createMut.isPending || updateMut.isPending ? 'Guardando...' : 'Guardar'}
               </button>
             </div>
+
+            {/* Sección modificadores — visible solo cuando el producto ya existe */}
+            {modal === 'edit' && selected && (
+              <>
+                <div className="border-t border-gray-100 mt-6 pt-6">
+                  <ModifierGroupsSection productId={selected.id} />
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
